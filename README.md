@@ -63,7 +63,9 @@ ZERO Sievert
 * `name`: Display Name
 * `id`: Internal Identifier
 
-`usage`: `"index"`
+`usage`: `"index"`\
 `version`: Version number (`X.YZ`)
 
 ## User Guide
+
+Simply run the python file or the exe depending on which you downloaded in the commandline
