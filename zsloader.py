@@ -25,7 +25,7 @@ import json
 import os
 import subprocess
 import shutil
-import jsonpatch
+import copy
 
 vanilla = open("./ZS_vanilla/gamedata_order.json").read()
 dump = open('dump.json', 'w')
@@ -33,21 +33,23 @@ dump = open('dump.json', 'w')
 print("Backing Up Vanilla Data...")
 shutil.copytree("./ZS_vanilla", "./ZS_backup")
 
+modlist = []
+enabled = []
+folders = []
+
 try:
     print("Loading Vanilla Data...")
     vanilla = json.loads(vanilla)['data']
     data = {}
     for i in vanilla:
         data[i[9:-5]] = json.loads(open("ZS_vanilla/" + i).read())
-        print("Loaded " + i)
+        print("  Loaded " + i)
 
     print("Finding Mods...")
     mods = os.listdir("./ZS_mods")
-    modlist = []
-    enabled = []
-    folders = []
     for i in mods:
         if os.path.isdir("./ZS_mods/" + i):
+            print("  ", end='')
             if os.path.exists("./ZS_mods/" + i + "/gamedata_order.json"):
                 try:
                     modlist.append(json.loads(open("./ZS_mods/" + i + "/gamedata_order.json").read()))
@@ -80,7 +82,6 @@ try:
     print("Loading Config...")
     if os.path.exists("./zsloader.config"):
         config = json.loads(open("./zsloader.config").read())
-        print('beans')
     else:
         config = {}
 
@@ -158,32 +159,257 @@ try:
             for j in modlist[i]['data']:
                 try:
                     moddata[modlist[i]['metadata']['id']][j[9:-5]] = json.loads(open("./ZS_mods/" + modlist[i]['metadata']['id'] + "/" + j).read())
-                    print("Loaded " + j + " from " + modlist[i]['metadata']['id'])
+                    print("  Loaded " + j + " from " + modlist[i]['metadata']['id'])
                 except:
-                    print("Error loading " + j + " from " + modlist[i]['metadata']['id'])
+                    print("  Error loading " + j + " from " + modlist[i]['metadata']['id'])
+
+    # print("Generating Diffs...")
+    # diffs = {}
+    # for j in data:
+    #     diffs[j] = {}
+    #     for i in range(len(modlist)):
+    #         if enabled[i] and j in moddata[modlist[i]['metadata']['id']]:
+    #             if j not in data:
+    #                 data[j] = { 'data' : {} }
+    #             print("  Generating diffs for " + j + " from " + modlist[i]['metadata']['id'])
+    #             print("    Detecting new entries...")
+    #             for k in moddata[modlist[i]['metadata']['id']][j]['data']:
+    #                 if k not in data[j]['data']:
+    #                     if k not in diffs[j]:
+    #                         diffs[j][k] = []
+    #                     diffs[j][k].append({ 'op' : 'add' , 'mod' : modlist[i]['metadata']['id']})
+    #                     print("      Added " + k)
+    #             print("    Detecting changed entries...")
+    #             for k in moddata[modlist[i]['metadata']['id']][j]['data']:
+    #                 if k in data[j]['data'] and data[j]['data'][k] != moddata[modlist[i]['metadata']['id']][j]['data'][k]:
+    #                     if k not in diffs[j]:
+    #                         diffs[j][k] = []
+    #                     diffs[j][k].append({ 'op' : 'change' , 'mod' : modlist[i]['metadata']['id']})
+    #                     print("      Changed " + k)
+    #             print("    Detecting removed entries...")
+    #             for k in data[j]['data']:
+    #                 if k not in moddata[modlist[i]['metadata']['id']][j]['data']:
+    #                     if k not in diffs[j]:
+    #                         diffs[j][k] = []
+    #                     diffs[j][k].append({ 'op' : 'remove' , 'mod' : modlist[i]['metadata']['id']})
+    #                     print("      Removed " + k)
+
+    def diff(a, b):
+        if a == b:
+            return {}
+        if type(a) == dict and type(b) == dict:
+            #find added keys
+            added = {}
+            for i in b:
+                if i not in a:
+                    added[i] = b[i]
+            #find removed keys
+            removed = {}
+            for i in a:
+                if i not in b:
+                    removed[i] = a[i]
+            #find changed keys recursively
+            changed = {}
+            for i in a:
+                if i in b:
+                    c = diff(a[i], b[i])
+                    if c != {}:
+                        changed[i] = c
+            result = {}
+            if added != {}:
+                result['added'] = added
+            if removed != {}:
+                result['removed'] = removed
+            if changed != {}:
+                result['changed'] = changed
+            return result
+        elif type(a) == list and type(b) == list:
+            #order doesnt matter
+            added = []
+            removed = []
+            changed = {}
+            for i in range(len(a)):
+                if type(a[i]) == dict:
+                    t = 'item'
+                    if 'id' in a[i]:
+                        t = 'id'
+                    f = False
+                    for j in range(len(b)):
+                        if type(b[j]) == dict and t in b[j] and a[i][t] == b[j][t]:
+                            f = True
+                            d = diff(a[i], b[j])
+                            if d != {}:
+                                changed[i] = d
+                                break
+                    if not f:
+                        removed.append(a[i])
+                elif a[i] not in b:
+                    removed.append(a[i])
+            for i in range(len(b)):
+                if type(b[i]) == dict:
+                    t = 'item'
+                    if 'id' in b[i]:
+                        t = 'id'
+                    f = False
+                    for j in range(len(a)):
+                        if type(a[j]) == dict and t in a[j] and b[i][t] == a[j][t]:
+                            f = True
+                            break
+                    if not f:
+                        added.append(b[i])
+                elif b[i] not in a:
+                    added.append(b[i])
+            result = {}
+            if added != []:
+                result['added'] = added
+            if removed != []:
+                result['removed'] = removed
+            if changed != {}:
+                result['changed'] = changed
+            return result
+        else:
+            return b
+
+    # a = { 'a' : 'a',
+    #       'b' : [0, 1, 2],
+    #       'c' : {
+    #             'e' : 'e',
+    #             'f' : 'f'
+    #       },
+    #       'd' : [
+    #             { 'item' : 'aa' , 'xa' : 'xa'},
+    #             { 'item' : 'bb' }
+    #       ]}
+    # b = { 'a' : 'A',
+    #       'b' : [0, 3, 2],
+    #       'c' : {
+    #             'f' : 'f'
+    #       },
+    #       'd' : [
+    #             { 'item' : 'aa' },
+    #             { 'item' : 'bb' , 'xb' : 'xb'}
+    #       ]}
+    # print(json.dumps(diff(a, b), indent=4))
+
+    def apply(a, d):
+        if type(a) == dict and type(d) == dict:
+            b = copy.deepcopy(a)
+            if 'added' in d:
+                for i in d['added']:
+                    b[i] = copy.deepcopy(d['added'][i])
+            if 'removed' in d:
+                for i in d['removed']:
+                    del b[i]
+            if 'changed' in d:
+                for i in d['changed']:
+                    b[i] = apply(a[i], d['changed'][i])
+            return b
+
+        elif type(a) == list and type(d) == dict:
+            c = []
+            if 'changed' in d:
+                for i in d['changed']:
+                    c.append(apply(a[i], d['changed'][i]))
+            else:
+                c = copy.deepcopy(a)
+            r = []
+            if 'removed' in d:
+                for i in range(len(c)):
+                    if i not in d['removed']:
+                        r.append(copy.deepcopy(c[i]))
+            else:
+                r = copy.deepcopy(c)
+            if 'added' in d:
+                for i in d['added']:
+                    r.append(copy.deepcopy(i))
+            return r
+        else:
+            return copy.deepcopy(d)
+        
+    # print(json.dumps(apply(a, diff(a, b)), indent=4))
 
     print("Generating Diffs...")
     diffs = {}
-    for mod in moddata:
-        diffs[mod] = {}
-        for i in moddata[mod]:
-            if i not in data:
-                data[i] = {}
-            diffs[mod][i] = jsonpatch.JsonPatch.from_diff(data[i], moddata[mod][i])
+    for j in data:
+        diffs[j] = {'added' : {}, 'removed' : {}, 'changed' : {}}
+        for i in range(len(modlist)):
+            if enabled[i] and j in moddata[modlist[i]['metadata']['id']]:
+                if j not in data:
+                    data[j] = { 'data' : {} }
+                print("  Generating diffs for " + j + " from " + modlist[i]['metadata']['id'])
+                d = diff(data[j]['data'], moddata[modlist[i]['metadata']['id']][j]['data'])
+                if 'added' in d:
+                    for k in d['added']:
+                        if k not in diffs[j]['added']:
+                            diffs[j]['added'][k] = []
+                        diffs[j]['added'][k].append({ 'mod' : modlist[i]['metadata']['id'], 'diff' : d['added'][k]})
+                        print("    Added " + k)
+                if 'removed' in d:
+                    for k in d['removed']:
+                        if k not in diffs[j]['removed']:
+                            diffs[j]['removed'][k] = []
+                        diffs[j]['removed'][k].append({ 'mod' : modlist[i]['metadata']['id'], 'diff' : d['removed'][k]})
+                        print("    Removed " + k)
+                if 'changed' in d:
+                    for k in d['changed']:
+                        if k not in diffs[j]['changed']:
+                            diffs[j]['changed'][k] = []
+                        diffs[j]['changed'][k].append({ 'mod' : modlist[i]['metadata']['id'], 'diff' : d['changed'][k]})
+                        print("    Changed " + k)              
 
-    #dump diffs
-    for mod in diffs:
-        dump.write("\n\n" + mod + "\n")
-        for diff in diffs[mod]:
-            dump.write("\n" + diff + "\n")
-            dump.write(json.dumps(diffs[mod][diff].patch, indent=4))
+    #print(json.dumps(diffs, indent=4))
+
+    print("Detecting Conflicts...")
+    conflicts = {}
+    for j in diffs:
+        conflicts[j] = {}
+        for k in diffs[j]['changed']:
+            if len(diffs[j]['changed'][k]) > 1:
+                conflicts[j][k] = []
+                for l in diffs[j]['changed'][k]:
+                    conflicts[j][k].append(l['mod'])
+            if k in diffs[j]['removed']:
+                if k not in conflicts:
+                    conflicts[j][k] = [diffs[j]['removed'][k][0]['mod']]
+                for l in diffs[j]['removed'][k]:
+                    conflicts[j][k].append(l['mod'])
+            
+    print(json.dumps(conflicts, indent=4))
+
+    print("Select an option:")
+    print("  1. Resolve Conflicts Automatically")
+    print("  2. Resolve Conflicts Manually")
+    print("  3. Resolve Conflicts from Config")
+    print("  4. Abort")
+
+    while True:
+        i = input("Select an option: ")
+        if i == '1':
+            print("Resolving Conflicts Automatically...")
+            break
+        elif i == '2':
+            print("Resolving Conflicts Manually...")
+            print("Still Under Construction")
+            break
+        elif i == '3':
+            print("Resolving Conflicts from Config...")
+            print("Still Under Construction")
+            break
+        elif i == '4':
+            print("Aborting...")
+            exit()
+        else:
+            print("Invalid Input")
 
     print("Merging Data...")
-    #merge data with diffs from lowest to highest priority
-    for mod in reversed([m['metadata']['id'] for m in modlist]):
-        for i in diffs[mod]:
-            print("Merging " + i + " from " + mod)
-            data[i] = diffs[mod][i].apply(data[i])
+    for j in diffs:
+        for k in diffs[j]['added']:
+            data[j]['data'][k] = apply({}, diffs[j]['added'][k][0]['diff'])
+        for k in diffs[j]['removed']:
+            del data[j]['data'][k]
+        for k in diffs[j]['changed']:
+            data[j]['data'][k] = apply(data[j]['data'][k], diffs[j]['changed'][k][0]['diff'])
+            print("  Merged " + k + " from " + diffs[j]['changed'][k][0]['mod'])
 
     print("Writing Data...")
     for i in data:
@@ -191,13 +417,9 @@ try:
         print("Wrote " + i)
 
     print("Launching Game...")
-    subprocess.run(["./ZERO Sievert.exe"])
+    #subprocess.run(["./ZERO Sievert.exe"])
+    input()
     print("Game Closed")
-
-    print("Restoring Vanilla...")
-    shutil.rmtree("./ZS_vanilla")
-    shutil.copytree("./ZS_backup", "./ZS_vanilla")
-    print("Done")
 finally:
     print("Saving Config...")
     for i in range(len(modlist)):
@@ -209,6 +431,10 @@ finally:
     for i in modlist:
         config['mod_order'].append(i['metadata']['id'])
     open("./zsloader.config", "w").write(json.dumps(config, indent=4))
+    print("Restoring Vanilla...")
+    shutil.rmtree("./ZS_vanilla")
+    shutil.copytree("./ZS_backup", "./ZS_vanilla")
+    print("Done")
     print("Cleaning Up...")
     shutil.rmtree("./ZS_backup")
     dump.close()
