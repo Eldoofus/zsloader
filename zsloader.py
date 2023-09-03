@@ -26,6 +26,7 @@ import os
 import subprocess
 import shutil
 import copy
+from sys import *
 
 vanilla = open("./ZS_vanilla/gamedata_order.json").read()
 dump = open('dump.json', 'w')
