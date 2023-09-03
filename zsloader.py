@@ -21,7 +21,7 @@ ZERO Sievert
 |   |   |   |   something.json
 '''
 
-import json
+import rapidjson
 import os
 import subprocess
 import shutil
@@ -39,11 +39,15 @@ folders = []
 
 try:
     print("Loading Vanilla Data...")
-    vanilla = json.loads(vanilla)['data']
+    vanilla = rapidjson.loads(vanilla)['data']
     data = {}
     for i in vanilla:
-        data[i[9:-5]] = json.loads(open("ZS_vanilla/" + i).read())
-        print("  Loaded " + i)
+        try:
+            data[i[9:-5]] = rapidjson.loads(open("ZS_vanilla/" + i).read(), parse_mode = rapidjson.PM_TRAILING_COMMAS)
+            print("  Loaded " + i)
+        except:
+            print("  Error loading " + i)
+            exit()
 
     print("Finding Mods...")
     mods = os.listdir("./ZS_mods")
@@ -52,7 +56,7 @@ try:
             print("  ", end='')
             if os.path.exists("./ZS_mods/" + i + "/gamedata_order.json"):
                 try:
-                    modlist.append(json.loads(open("./ZS_mods/" + i + "/gamedata_order.json").read()))
+                    modlist.append(rapidjson.loads(open("./ZS_mods/" + i + "/gamedata_order.json").read(), parse_mode = rapidjson.PM_TRAILING_COMMAS))
                     enabled.append(True)
                     folders.append(i)
                     if 'metadata' in modlist[-1] and 'id' in modlist[-1]['metadata']:
@@ -64,9 +68,9 @@ try:
                         raise Exception("Error reading " + i + "/gamedata_order.json")
                 except:
                     print("Error reading " + i)
-            elif os.path.exists("./ZS_mods/" + i + "/gamedata_order.json.disabled"):
+            elif os.path.exists("./ZS_mods/" + i + "/gamedata_order.rapidjson.disabled"):
                 try:
-                    modlist.append(json.loads(open("./ZS_mods/" + i + "/gamedata_order.json.disabled").read()))
+                    modlist.append(rapidjson.loads(open("./ZS_mods/" + i + "/gamedata_order.rapidjson.disabled").read(), parse_mode = rapidjson.PM_TRAILING_COMMAS))
                     enabled.append(False)
                     folders.append(i)
                     if 'metadata' in modlist[-1] and 'id' in modlist[-1]['metadata']:
@@ -75,17 +79,16 @@ try:
                         modlist.pop()
                         enabled.pop()
                         folders.pop()
-                        raise Exception("Error reading " + i + "/gamedata_order.json.disabled")
+                        raise Exception("Error reading " + i + "/gamedata_order.rapidjson.disabled")
                 except:
                     print("Error reading " + i)
 
     print("Loading Config...")
     if os.path.exists("./zsloader.config"):
-        config = json.loads(open("./zsloader.config").read())
+        config = rapidjson.loads(open("./zsloader.config").read())
     else:
         config = {}
 
-    #reorder mods based on config
     if 'mod_order' in config:
         for i in range(len(config['mod_order'])-1, -1, -1):
             if config['mod_order'][i] in [m['metadata']['id'] for m in modlist]:
@@ -158,57 +161,23 @@ try:
             moddata[modlist[i]['metadata']['id']] = {}
             for j in modlist[i]['data']:
                 try:
-                    moddata[modlist[i]['metadata']['id']][j[9:-5]] = json.loads(open("./ZS_mods/" + modlist[i]['metadata']['id'] + "/" + j).read())
+                    moddata[modlist[i]['metadata']['id']][j[9:-5]] = rapidjson.loads(open("./ZS_mods/" + modlist[i]['metadata']['id'] + "/" + j).read())
                     print("  Loaded " + j + " from " + modlist[i]['metadata']['id'])
                 except:
                     print("  Error loading " + j + " from " + modlist[i]['metadata']['id'])
-
-    # print("Generating Diffs...")
-    # diffs = {}
-    # for j in data:
-    #     diffs[j] = {}
-    #     for i in range(len(modlist)):
-    #         if enabled[i] and j in moddata[modlist[i]['metadata']['id']]:
-    #             if j not in data:
-    #                 data[j] = { 'data' : {} }
-    #             print("  Generating diffs for " + j + " from " + modlist[i]['metadata']['id'])
-    #             print("    Detecting new entries...")
-    #             for k in moddata[modlist[i]['metadata']['id']][j]['data']:
-    #                 if k not in data[j]['data']:
-    #                     if k not in diffs[j]:
-    #                         diffs[j][k] = []
-    #                     diffs[j][k].append({ 'op' : 'add' , 'mod' : modlist[i]['metadata']['id']})
-    #                     print("      Added " + k)
-    #             print("    Detecting changed entries...")
-    #             for k in moddata[modlist[i]['metadata']['id']][j]['data']:
-    #                 if k in data[j]['data'] and data[j]['data'][k] != moddata[modlist[i]['metadata']['id']][j]['data'][k]:
-    #                     if k not in diffs[j]:
-    #                         diffs[j][k] = []
-    #                     diffs[j][k].append({ 'op' : 'change' , 'mod' : modlist[i]['metadata']['id']})
-    #                     print("      Changed " + k)
-    #             print("    Detecting removed entries...")
-    #             for k in data[j]['data']:
-    #                 if k not in moddata[modlist[i]['metadata']['id']][j]['data']:
-    #                     if k not in diffs[j]:
-    #                         diffs[j][k] = []
-    #                     diffs[j][k].append({ 'op' : 'remove' , 'mod' : modlist[i]['metadata']['id']})
-    #                     print("      Removed " + k)
 
     def diff(a, b):
         if a == b:
             return {}
         if type(a) == dict and type(b) == dict:
-            #find added keys
             added = {}
             for i in b:
                 if i not in a:
                     added[i] = b[i]
-            #find removed keys
             removed = {}
             for i in a:
                 if i not in b:
                     removed[i] = a[i]
-            #find changed keys recursively
             changed = {}
             for i in a:
                 if i in b:
@@ -270,27 +239,6 @@ try:
         else:
             return b
 
-    # a = { 'a' : 'a',
-    #       'b' : [0, 1, 2],
-    #       'c' : {
-    #             'e' : 'e',
-    #             'f' : 'f'
-    #       },
-    #       'd' : [
-    #             { 'item' : 'aa' , 'xa' : 'xa'},
-    #             { 'item' : 'bb' }
-    #       ]}
-    # b = { 'a' : 'A',
-    #       'b' : [0, 3, 2],
-    #       'c' : {
-    #             'f' : 'f'
-    #       },
-    #       'd' : [
-    #             { 'item' : 'aa' },
-    #             { 'item' : 'bb' , 'xb' : 'xb'}
-    #       ]}
-    # print(json.dumps(diff(a, b), indent=4))
-
     def apply(a, d):
         if type(a) == dict and type(d) == dict:
             b = copy.deepcopy(a)
@@ -325,8 +273,6 @@ try:
             return r
         else:
             return copy.deepcopy(d)
-        
-    # print(json.dumps(apply(a, diff(a, b)), indent=4))
 
     print("Generating Diffs...")
     diffs = {}
@@ -357,8 +303,6 @@ try:
                         diffs[j]['changed'][k].append({ 'mod' : modlist[i]['metadata']['id'], 'diff' : d['changed'][k]})
                         print("    Changed " + k)              
 
-    #print(json.dumps(diffs, indent=4))
-
     print("Detecting Conflicts...")
     conflicts = {}
     for j in diffs:
@@ -374,7 +318,7 @@ try:
                 for l in diffs[j]['removed'][k]:
                     conflicts[j][k].append(l['mod'])
             
-    print(json.dumps(conflicts, indent=4))
+    print(rapidjson.dumps(conflicts, indent=4))
 
     print("Select an option:")
     print("  1. Resolve Conflicts Automatically")
@@ -413,24 +357,23 @@ try:
 
     print("Writing Data...")
     for i in data:
-        open("./ZS_vanilla/gamedata/" + i + ".json", "w").write(json.dumps(data[i], indent=4))
+        open("./ZS_vanilla/gamedata/" + i + ".json", "w").write(rapidjson.dumps(data[i], indent=4))
         print("Wrote " + i)
 
     print("Launching Game...")
-    #subprocess.run(["./ZERO Sievert.exe"])
-    input()
+    subprocess.run(["./ZERO Sievert.exe"])
     print("Game Closed")
 finally:
     print("Saving Config...")
     for i in range(len(modlist)):
-        if enabled[i] and os.path.exists("./ZS_mods/" + folders[i] + "/gamedata_order.json.disabled"):
-            os.rename("./ZS_mods/" + folders[i] + "/gamedata_order.json.disabled", "./ZS_mods/" + folders[i] + "/gamedata_order.json")
+        if enabled[i] and os.path.exists("./ZS_mods/" + folders[i] + "/gamedata_order.rapidjson.disabled"):
+            os.rename("./ZS_mods/" + folders[i] + "/gamedata_order.rapidjson.disabled", "./ZS_mods/" + folders[i] + "/gamedata_order.json")
         elif not enabled[i] and os.path.exists("./ZS_mods/" + folders[i] + "/gamedata_order.json"):
-            os.rename("./ZS_mods/" + folders[i] + "/gamedata_order.json", "./ZS_mods/" + folders[i] + "/gamedata_order.json.disabled")
+            os.rename("./ZS_mods/" + folders[i] + "/gamedata_order.json", "./ZS_mods/" + folders[i] + "/gamedata_order.rapidjson.disabled")
     config['mod_order'] = []
     for i in modlist:
         config['mod_order'].append(i['metadata']['id'])
-    open("./zsloader.config", "w").write(json.dumps(config, indent=4))
+    open("./zsloader.config", "w").write(rapidjson.dumps(config, indent=4))
     print("Restoring Vanilla...")
     shutil.rmtree("./ZS_vanilla")
     shutil.copytree("./ZS_backup", "./ZS_vanilla")

@@ -8,3 +8,6 @@
 *.mp4
 *.exe
 *.config
+zsloader.spec
+dist
+build
