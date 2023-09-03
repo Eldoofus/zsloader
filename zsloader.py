@@ -348,7 +348,7 @@ try:
     print("Merging Data...")
     for j in diffs:
         for k in diffs[j]['added']:
-            data[j]['data'][k] = apply({}, diffs[j]['added'][k][0]['diff'])
+            data[j]['data'][k] = copy.deepcopy(diffs[j]['added'][k][0]['diff'])
         for k in diffs[j]['removed']:
             del data[j]['data'][k]
         for k in diffs[j]['changed']:
